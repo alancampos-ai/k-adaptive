@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 from pathlib import Path
 import json
 import argparse
@@ -125,7 +124,6 @@ def main():
         gap=args.gap, panel_gap_x=args.panel_gap_x, panel_gap_y=args.panel_gap_y,
         margin=args.margin, title_pt=args.title_pt,
     )
-
 if __name__ == "__main__":
     main()
 
