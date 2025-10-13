@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 from pathlib import Path
 import json
 import numpy as np
@@ -107,4 +106,3 @@ if __name__ == "__main__":
     print("Generated PNGs:")
     for p in outs:
         print(p.resolve())
-
