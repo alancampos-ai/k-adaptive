@@ -1,5 +1,5 @@
 import os
-import numpy as np
+import numpy as np 
 from dipy.io.image import load_nifti, save_nifti
 from dipy.reconst.dti import decompose_tensor
 from pymanopt.manifolds import PositiveDefinite
