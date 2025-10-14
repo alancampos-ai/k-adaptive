@@ -1,4 +1,4 @@
-import os
+import os 
 import numpy as np
 from dipy.io.image import load_nifti, save_nifti
 from segment_dti import segmentation
