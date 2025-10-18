@@ -3,6 +3,7 @@ import json
 import argparse
 from typing import List, Tuple
 from PIL import Image, ImageDraw, ImageFont
+
 def load_font(pt: int) -> ImageFont.FreeTypeFont:
     try:
         return ImageFont.truetype("DejaVuSans.ttf", pt)
