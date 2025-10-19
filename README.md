@@ -1,5 +1,5 @@
 # airm-kmeans-dti
-DTI-MRI segmentation via generalized k–Lα centroids on SPD under AIRM, K ∈ {2,3,4}. 
+DTI-MRI segmentation via generalized k–Lα centroids on SPD under AIRM, K ∈ {2,3,4}.        
 
 <div align="center">
   <img src="kmeans.png" alt="Banner do perfil" width="100%">
