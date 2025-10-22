@@ -1,4 +1,4 @@
-# airm-kmeans-dti
+# airm-gmm-dti
 DTI-MRI segmentation via generalized k–Lα centroids on SPD under AIRM, K ∈ {2,3,4}.
 
 <div align="center">
