@@ -1,192 +1,118 @@
-import os
+#!/usr/bin/env python
 import argparse
-from typing import List, Tuple, Union
-from pathlib import Path
 import numpy as np
+from pathlib import Path
 import nibabel as nib
-from dipy.io.image import load_nifti
-from src.segment_dti import segmentation
+from scipy.optimize import linear_sum_assignment
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans, MiniBatchKMeans
+from sklearn.mixture import GaussianMixture
 
-DEFAULT_ALPHAS = [1.0, 1.25, 1.5, 1.75, 2.0]
+def spd_le(M):
+    w, V = np.linalg.eigh(M)
+    w = np.clip(w, 1e-12, None)
+    return V @ np.diag(np.log(w)) @ V.T
 
-def project_root() -> Path:
-    return Path(__file__).resolve().parents[2]
+def vec6(M):
+    s2 = np.sqrt(2.0)
+    return np.array([M[0,0], M[1,1], M[2,2], s2*M[0,1], s2*M[0,2], s2*M[1,2]], dtype=float)
 
-def choose_dataset(dataset_root: Path) -> Path:
-    primary = dataset_root / 'dataset3'
-    fallback = dataset_root / 'dataset1'
-    return primary if primary.is_dir() else fallback
 
-def mean_iou(y_true: np.ndarray, y_pred: np.ndarray, n_classes: int) -> float:
-    ious = []
-    for c in range(n_classes):
-        t = y_true == c
-        p = y_pred == c
-        inter = np.logical_and(t, p).sum()
-        union = np.logical_or(t, p).sum()
-        if union > 0:
-            ious.append(inter / union)
-    if not ious:
-        return float('nan')
-    return float(np.mean(ious))
+def load_data(data_dir, K):
+    d = Path(data_dir)
+    dti = nib.load(str(d / "stanford_hardi_denoised_.nii.gz")).get_fdata()
+    msk = nib.load(str(d / "stanford_hardi_denoised_mask.nii.gz")).get_fdata()
+    ref = nib.load(str(d / f"stanford_hardi_denoised_segmentation_fa_{K}_classes.nii.gz")).get_fdata()
+    assert dti.ndim == 5 and dti.shape[-2:] == (3, 3), "DTI must be (X,Y,Z,3,3)"
+    assert msk.ndim == 3 and ref.ndim == 3, "Mask and GT must be 3D"
+    assert dti.shape[:3] == msk.shape == ref.shape, "DTI/Mask/GT shapes must match"
+    msk = msk > 0
+    X, Y, Z = ref.shape
+    dti = dti.reshape(X*Y*Z, 3, 3)
+    mskv = msk.reshape(-1)
+    refv = ref.reshape(-1).astype(int)
+    idx = np.where(mskv & (refv > 0))[0]
+    feats = np.stack([vec6(spd_le(dti[i])) for i in idx], axis=0)
+    y = refv[idx]
+    return feats, y
 
-def _palette_rgba() -> np.ndarray:
-    table = np.zeros((5, 4), dtype=np.uint8)
-    table[0] = [0, 0, 0, 255]
-    table[1] = [255, 0, 0, 255]
-    table[2] = [0, 255, 0, 255]
-    table[3] = [0, 0, 255, 255]
-    table[4] = [255, 255, 0, 255]
-    return table
+def confusion(y_true, y_pred, K):
+    C = np.zeros((K, K), dtype=int)
+    for t, p in zip(y_true, y_pred):
+        if 1 <= t <= K and 1 <= p <= K:
+            C[t-1, p-1] += 1
+    return C
 
-def labels_to_rgb(label_slice: np.ndarray, k: int) -> np.ndarray:
-    lut = _palette_rgba()
-    max_idx = min(k, 4)
-    out = np.zeros((label_slice.shape[0], label_slice.shape[1], 3), dtype=np.uint8)
-    for c in range(max_idx + 1):
-        mask = (label_slice == c)
-        out[mask] = lut[c, :3]
-    return out
+def metrics_from_cm(C):
+    tp = np.diag(C).astype(float)
+    fp = C.sum(0) - tp
+    fn = C.sum(1) - tp
+    tn = C.sum() - (tp + fp + fn)
+    prec = np.where(tp+fp>0, tp/(tp+fp), 0.0).mean()
+    rec  = np.where(tp+fn>0, tp/(tp+fn), 0.0).mean()
+    iou  = np.where(tp+fp+fn>0, tp/(tp+fp+fn), 0.0).mean()
+    f1   = np.where(2*tp+fp+fn>0, 2*tp/(2*tp+fp+fn), 0.0).mean()
+    acc  = np.trace(C)/C.sum() if C.sum()>0 else 0.0
+    return acc, prec, rec, iou, f1
 
-def save_slice_png(arr, affine, plane, index, k, out_file, scale=4):
-    import numpy as np, nibabel as nib
-    from PIL import Image
-    def to_ras(a, aff):
-        return nib.as_closest_canonical(nib.Nifti1Image(a, aff)).get_fdata().astype(a.dtype)
-    def palette(k):
-        import numpy as np
-        lut = np.zeros((5,3), dtype=np.uint8)
-        lut[0]=[0,0,0]; lut[1]=[255,0,0]; lut[2]=[0,255,0]; lut[3]=[0,0,255]; lut[4]=[255,255,0]
-        return lut
-    A = to_ras(arr, affine)
-    if plane=='axial': axis=2
-    elif plane=='coronal': axis=1
-    elif plane=='sagittal': axis=0
-    else: raise ValueError('invalid plane')
-    idx = A.shape[axis]//2 if (isinstance(index,str) and index=='mid') else max(0,min(int(index),A.shape[axis]-1))
-    sl = A[:,:,idx] if axis==2 else (A[:,idx,:] if axis==1 else A[idx,:,:])
-    sl = np.rot90(sl, 1)
-    sl = np.fliplr(sl)
-    lut = palette(k if k<=4 else 4)
-    rgb = lut[(sl.clip(0,4)).astype(int)]
-    im = Image.fromarray(rgb, mode='RGB')
-    if scale and scale>1:
-        im = im.resize((im.width*scale, im.height*scale), resample=Image.NEAREST)
-    out_file.parent.mkdir(parents=True, exist_ok=True)
-    im.save(out_file.as_posix(), format='PNG')
-
-def run_one(method: str, k: int, alpha: float, max_iterations: int,
-            dataset_root: Path, results_root: Path, slice_axial: Union[int, str],
-            slice_coronal: Union[int, str], slice_sagittal: Union[int, str],
-            seed: int = 50):
-    np.random.seed(seed)
-    ds = choose_dataset(dataset_root)
-    fdti = ds / 'stanford_hardi_denoised_dti_smooth_mediana.nii.gz'
-    fmask = ds / 'stanford_hardi_denoised_mask.nii.gz'
-    if not fdti.is_file():
-        raise FileNotFoundError(str(fdti))
-    if not fmask.is_file():
-        raise FileNotFoundError(str(fmask))
-    dti, affine = load_nifti(str(fdti))
-    mask, _ = load_nifti(str(fmask))
-    mask = mask.astype(np.bool_)
-    seg = segmentation(dti, n_claster=k, mask=mask, metric_type=method,
-                       expoent=alpha, index_centers=None, max_iterations=max_iterations, dim_point=3)
-    alpha_tag = f"{alpha:.2f}"
-    name = f"{method}_{alpha_tag}_k_{k}"
-    seg_dir = results_root / name / 'out'
-    seg_dir.mkdir(parents=True, exist_ok=True)
-    seg_file = seg_dir / 'seg_DTI_3D.nii.gz'
-    nib.save(nib.Nifti1Image(seg.astype(np.int16), affine), str(seg_file))
-    ref_candidates = [
-        ds / f"stanford_hardi_denoised_segmentation_fa_{k}_classes.nii.gz",
-        ds / "stanford_hardi_denoised_segmentation_fa.nii.gz"
-    ]
-    ref = next((p for p in ref_candidates if p.is_file()), None)
-    if ref is None:
-        raise FileNotFoundError('reference segmentation not found')
-    ref_vol, ref_aff = load_nifti(str(ref))
-    iou = mean_iou(ref_vol.astype(np.int32).ravel(), seg.astype(np.int32).ravel(), k + 1)
-    metrics_dir = results_root / name / 'metrics'
-    metrics_dir.mkdir(parents=True, exist_ok=True)
-    metrics_csv = metrics_dir / 'metrics.csv'
-    header_needed = not metrics_csv.is_file()
-    with open(metrics_csv, 'a') as f:
-        if header_needed:
-            f.write('method,alpha,k,iou,seg_path,ref_path\n')
-        f.write(f'{method},{alpha_tag},{k},{iou:.6f},{seg_file},{ref}\n')
-    master_csv = results_root / 'master_metrics.csv'
-    master_header = not master_csv.is_file()
-    with open(master_csv, 'a') as f:
-        if master_header:
-            f.write('method,alpha,k,iou,seg_path,ref_path\n')
-        f.write(f'{method},{alpha_tag},{k},{iou:.6f},{seg_file},{ref}\n')
-    plots_dir = results_root / name / 'img'
-    plots_dir.mkdir(parents=True, exist_ok=True)
-    save_slice_png(ref_vol, ref_aff, 'axial', slice_axial, k, plots_dir / f'alpha{alpha_tag}_k{k}_{slice_axial}_axial.png')
-    save_slice_png(ref_vol, ref_aff, 'coronal', slice_coronal, k, plots_dir / f'alpha{alpha_tag}_k{k}_{slice_coronal}_coronal.png')
-    save_slice_png(ref_vol, ref_aff, 'sagittal', slice_sagittal, k, plots_dir / f'alpha{alpha_tag}_k{k}_{slice_sagittal}_sagittal.png')
-    print(f'IOU,{method},{alpha_tag},{k},{iou:.6f}')
-
-def parse_clusters(arg: str):
-    allowed = {2, 3, 4}
-    vals = set()
-    for token in arg.split(','):
-        token = token.strip()
-        if not token:
-            continue
-        k = int(token)
-        if k not in allowed:
-            raise argparse.ArgumentTypeError('clusters must be in {2,3,4}')
-        vals.add(k)
-    out = sorted(vals)
-    if not out:
-        raise argparse.ArgumentTypeError('at least one k in {2,3,4}')
-    return out
-
-def parse_alphas(arg: str):
-    vals = []
-    for token in arg.split(','):
-        token = token.strip()
-        if not token:
-            continue
-        vals.append(float(token))
-    if not vals:
-        raise argparse.ArgumentTypeError('provide at least one alpha')
-    return vals
-
-def parse_slice(arg: str) -> Union[int, str]:
-    if arg == 'mid':
-        return 'mid'
-    v = int(arg)
-    if v < 0:
-        raise argparse.ArgumentTypeError('slice must be >=0 or "mid"')
-    return v
+def hungarian_match(y_true, y_pred, K):
+    C = confusion(y_true, y_pred, K)
+    r, c = linear_sum_assignment(-C)
+    m = {cj+1: ri+1 for ri, cj in zip(r, c)}
+    return np.array([m.get(p, p) for p in y_pred], dtype=int)
 
 def main():
-    root = project_root()
-    parser = argparse.ArgumentParser(description='DTI KMeans with AIRM and Euclidean')
-    parser.add_argument('-k', '--clusters', type=parse_clusters, default=[2,3,4])
-    parser.add_argument('-m', '--method', choices=['airm', 'no_spd', 'both'], default='both')
-    parser.add_argument('--alphas', type=parse_alphas, default=DEFAULT_ALPHAS)
-    parser.add_argument('--max-iterations', type=int, default=100)
-    parser.add_argument('--dataset-root', type=str, default=str(root / 'dataset'))
-    parser.add_argument('--results-root', type=str, default=str(root / 'results'))
-    parser.add_argument('--slice-axial', type=parse_slice, default='mid')
-    parser.add_argument('--slice-coronal', type=parse_slice, default='mid')
-    parser.add_argument('--slice-sagittal', type=parse_slice, default='mid')
-    parser.add_argument('--seed', type=int, default=50)
-    args = parser.parse_args()
-    results_root = Path(args.results_root)
-    if results_root.name != 'out':
-        results_root = results_root / 'out'
-    methods = ['airm', 'no_spd'] if args.method == 'both' else [args.method]
-    dataset_root = Path(args.dataset_root)
-    for m in methods:
-        for k in args.clusters:
-            for a in args.alphas:
-                run_one(m, k, a, args.max_iterations, dataset_root, results_root,
-                        args.slice_axial, args.slice_coronal, args.slice_sagittal, args.seed)
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--classes", type=int, required=True)
+    ap.add_argument("--data-dir", type=str, required=True)
+    ap.add_argument("--seed", type=int, default=50)
+    ap.add_argument("--out", type=str, required=True)
+    ap.add_argument("--algo", choices=["kmeans", "mbkmeans", "gmm"], default="kmeans")
+    ap.add_argument("--n-init", type=int, default=10)
+    ap.add_argument("--max-iter", type=int, default=300)
+    ap.add_argument("--batch-size", type=int, default=4096)
+    ap.add_argument("--covariance-type", choices=["full","tied","diag","spherical"], default="full")
+    ap.add_argument("--reg-covar", type=float, default=1e-6)
+    ap.add_argument("--standardize", type=int, default=1)
+    args = ap.parse_args()
 
-if __name__ == '__main__':
+    rng = np.random.RandomState(args.seed)
+    K = args.classes
+    X, y = load_data(args.data_dir, K)
+
+    if args.standardize:
+        X = StandardScaler().fit_transform(X)
+
+    if args.algo == "kmeans":
+        model = KMeans(n_clusters=K, random_state=args.seed, n_init=args.n_init, max_iter=args.max_iter)
+        y_pred = model.fit_predict(X) + 1
+    elif args.algo == "mbkmeans":
+        model = MiniBatchKMeans(n_clusters=K, random_state=args.seed, batch_size=args.batch_size, max_iter=args.max_iter)
+        y_pred = model.fit_predict(X) + 1
+    else:
+        model = GaussianMixture(
+            n_components=K,
+            covariance_type=args.covariance_type,
+            random_state=args.seed,
+            max_iter=args.max_iter,
+            n_init=args.n_init,
+            reg_covar=args.reg_covar
+        )
+        y_pred = model.fit_predict(X) + 1
+
+    y_pred = hungarian_match(y, y_pred, K)
+    C = confusion(y, y_pred, K)
+    acc, prec, rec, iou, f1 = metrics_from_cm(C)
+
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with open(out, "w") as f:
+        f.write("metric,value\n")
+        f.write(f"accuracy,{acc:.6f}\n")
+        f.write(f"precision,{prec:.6f}\n")
+        f.write(f"recall,{rec:.6f}\n")
+        f.write(f"iou,{iou:.6f}\n")
+        f.write(f"f1,{f1:.6f}\n")
+
+if __name__ == "__main__":
     main()
