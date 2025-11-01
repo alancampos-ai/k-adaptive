@@ -1,4 +1,4 @@
-import os
+import os 
 import numpy as np
 from pathlib import Path
 from dipy.data import get_fnames
