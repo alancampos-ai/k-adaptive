@@ -1,4 +1,4 @@
-# airm-gmm-dti
+# airm-gmm-dti 
 DTI-MRI segmentation via Riemannian Gaussian Mixture Models (GMM) on SPD under AIRM, K ∈ {2,3,4}.
 
 <div align="center">
