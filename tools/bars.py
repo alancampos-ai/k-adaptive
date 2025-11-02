@@ -102,7 +102,7 @@ if __name__ == "__main__":
     outs = []
     for i in range(len(alphas)):
         for k in Ks:
-            outs.append(plot_grouped_perK(i, k))
+            outs.append(plot_grouped_perK(i, k)) 
     print("Generated PNGs:")
     for p in outs:
         print(p.resolve())
