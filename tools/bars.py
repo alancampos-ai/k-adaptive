@@ -3,7 +3,7 @@ import json
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick 
-
+ 
 here = Path(__file__).resolve()
 root = here.parents[1]
 data_path = root / "dataset" / "json"/"data.json"
