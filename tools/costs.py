@@ -2,7 +2,7 @@ from pathlib import Path
 import json
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.ticker as mtick
+import matplotlib.ticker as mtick 
 from matplotlib.patches import Patch, FancyArrowPatch
 
 here = Path(__file__).resolve()
