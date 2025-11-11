@@ -10,7 +10,7 @@ root = here.parents[1]
 combined_json = root / "dataset" / "json" / "costs.json"
 outdir = root / "results" / "figs" / "figs_costs"
 outdir.mkdir(parents=True, exist_ok=True)
-
+ 
 def _read_json(path: Path):
     return json.loads(path.read_text(encoding="utf-8"))
 
