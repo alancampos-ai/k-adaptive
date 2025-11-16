@@ -1,5 +1,5 @@
 from pathlib import Path
-import json
+import json 
 import argparse
 from typing import List, Tuple
 from PIL import Image, ImageDraw, ImageFont
