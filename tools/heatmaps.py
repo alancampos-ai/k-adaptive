@@ -20,7 +20,7 @@ with open(data_path, "r", encoding="utf-8") as f:
 plt.rcParams.update({
     "figure.dpi": 300,
     "font.size": 11,
-    "axes.titlesize": 12,
+    "axes.titlesize": 12, 
     "axes.labelsize": 12,
     "xtick.labelsize": 11,
     "ytick.labelsize": 11,
