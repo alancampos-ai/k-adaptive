@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from matplotlib import colors, patches, patheffects
 
 alphas = [1.00, 1.25, 1.50, 1.75, 2.00] 
-ks = [2, 3, 4]
+ks = [2, 3, 4] 
 
 here = Path(__file__).resolve()
 root = here.parents[1]
