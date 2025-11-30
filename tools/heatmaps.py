@@ -16,7 +16,7 @@ outdir.mkdir(parents=True, exist_ok=True)
 
 with open(data_path, "r", encoding="utf-8") as f:
     data = json.load(f)
-
+ 
 plt.rcParams.update({
     "figure.dpi": 300,
     "font.size": 11,
