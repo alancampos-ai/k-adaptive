@@ -8,7 +8,7 @@ def load_font(pt: int) -> ImageFont.FreeTypeFont:
     try:
         return ImageFont.truetype("DejaVuSans.ttf", pt)
     except Exception:
-        return ImageFont.load_default()
+        return ImageFont.load_default() 
 
 def read_config(cfg_path: Path, images_root: Path | None) -> Tuple[List[str], List[List[str]]]:
     cfg = json.loads(cfg_path.read_text())
