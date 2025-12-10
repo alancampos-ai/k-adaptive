@@ -22,7 +22,7 @@ def _to_float(x):
             return float(x.replace(",", ""))
         except Exception:
             return None
-    return None 
+    return None  
 
 def load_costs():
     if not combined_json.exists():
