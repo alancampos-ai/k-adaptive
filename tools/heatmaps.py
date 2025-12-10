@@ -22,7 +22,7 @@ plt.rcParams.update({
     "font.size": 11,
     "axes.titlesize": 12, 
     "axes.labelsize": 12,
-    "xtick.labelsize": 11,
+    "xtick.labelsize": 11, 
     "ytick.labelsize": 11,
     "axes.titlepad": 6,
 })
