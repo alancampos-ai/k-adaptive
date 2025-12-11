@@ -2,7 +2,7 @@ from pathlib import Path
 import json     
 import argparse   
 from typing import List, Tuple
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont 
   
 def load_font(pt: int) -> ImageFont.FreeTypeFont:
     try:
