@@ -3,7 +3,7 @@ import sys, subprocess
 def run_multi_seed(script_path, metric, classes, a_min, a_max, a_step, max_iter, restarts,
                    data_dir, dti_file, mask_file, gt_pattern, seed_base, seeds,
                    iou_scheme, radius, border_metric, interior_metric, save_best):
-    base = [sys.executable, str(script_path),
+    base = [sys.executable, str(script_path), 
             "--metric", metric,
             "--classes", str(classes),
             "--a-min", str(a_min),
