@@ -3,7 +3,7 @@ from typing import Optional, Tuple
 from sklearn.mixture import GaussianMixture
 from gmm_utils import StandardScalerSimple, euclid_pairwise, silhouette_from_dist
 from spd import pairwise_logeuc, pairwise_airm, spd_logm
-
+ 
 TYPE_NO_SPD_LE = "no_spd_le"
 TYPE_SPD_LE = "spd_le"
 TYPE_SPD_AIRM = "spd_airm"
